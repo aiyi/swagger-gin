@@ -15,8 +15,6 @@ var (
 // Generator is the type whose methods generate the output, stored in the associated response structure.
 type Generator struct {
 	*bytes.Buffer
-	//def    *GenDefinition
-	//op     *GenOperation
 }
 
 // New creates a new generator and allocates the request and response protobufs.
@@ -42,8 +40,8 @@ func (g *Generator) fail(msgs ...string) {
 func (g *Generator) generateModel(buf *bytes.Buffer, def *GenDefinition) {
 	g.Buffer = buf
 
-	g.P("package ", def.Package)
-	g.P()
+	g.p("package ", def.Package)
+	g.p()
 
 	if len(def.DefaultImports) > 0 {
 		g.generateImported(def)
@@ -57,7 +55,7 @@ func (g *Generator) generateModel(buf *bytes.Buffer, def *GenDefinition) {
 
 	for _, prop := range def.Properties {
 		if prop.sharedValidations.HasValidations {
-			g.generatePropValidator(&prop)
+			g.generatePropValidator(def.Name, &prop)
 		}
 	}
 
@@ -71,7 +69,7 @@ func (g *Generator) generateParameterModel(buf *bytes.Buffer, op *GenOperation) 
 
 // P prints the arguments to the generated output.  It handles strings and int32s, plus
 // handling indirections because they may be *string, etc.
-func (g *Generator) P(str ...interface{}) {
+func (g *Generator) p(str ...interface{}) {
 	for _, v := range str {
 		switch s := v.(type) {
 		case string:
@@ -100,29 +98,81 @@ func (g *Generator) P(str ...interface{}) {
 }
 
 func (g *Generator) generateImported(def *GenDefinition) {
-	g.P("import (")
+	g.p("import (")
 	for _, imprt := range def.DefaultImports {
-		g.P("\"", imprt, "\"")
+		g.p("\"", imprt, "\"")
 	}
-	g.P(")")
-	g.P()
+	g.p(")")
+	g.p()
 }
 
 func (g *Generator) generateStruct(def *GenDefinition) {
-	g.P("type ", def.GenSchema.Name, " struct {")
+	g.p("type ", def.GenSchema.Name, " struct {")
 	for _, prop := range def.Properties {
 		if prop.sharedValidations.Required {
-			g.P(g.caps(prop.Name), " ", prop.resolvedType.GoType, " `json:\"", prop.Name, "\"`")
+			g.p(g.caps(prop.Name), " ", prop.resolvedType.GoType, " `json:\"", prop.Name, "\" binding:\"required\"`")
 		} else {
-			g.P(g.caps(prop.Name), " ", prop.resolvedType.GoType, " `json:\"", prop.Name, ",omitempty\"`")
+			g.p(g.caps(prop.Name), " ", prop.resolvedType.GoType, " `json:\"", prop.Name, ",omitempty\"`")
 		}
 	}
-	g.P("}")
-	g.P()
+	g.p("}")
+	g.p()
 }
 
 func (g *Generator) generateValidator(def *GenDefinition) {
+	g.p("func (m *", def.Name, ") Validate() error {")
+	for _, prop := range def.Properties {
+		if prop.sharedValidations.HasValidations {
+			g.p("if err := m.validate", g.caps(prop.Name), "(); err != nil {")
+			g.p("	return err")
+			g.p("}")
+			g.p()
+		}
+	}
+	g.p("	return nil")
+	g.p("}")
+	g.p()
 }
 
-func (g *Generator) generatePropValidator(prop *GenSchema) {
+func (g *Generator) generatePropValidator(model string, prop *GenSchema) {
+	g.p("func (m *", model, ") validate", g.caps(prop.Name), "() error {")
+	if prop.sharedValidations.MaxLength != nil {
+		g.p("if err := validate.MaxLength(\"", prop.Name, "\", \"body\", ", prop.resolvedType.GoType, "(m.", g.caps(prop.Name), "), ", prop.sharedValidations.MaxLength, "); err != nil {")
+		g.p("	return err")
+		g.p("	}")
+		g.p()
+	}
+	if prop.sharedValidations.MinLength != nil {
+		g.p("if err := validate.MinLength(\"", prop.Name, "\", \"body\", ", prop.resolvedType.GoType, "(m.", g.caps(prop.Name), "), ", prop.sharedValidations.MinLength, "); err != nil {")
+		g.p("	return err")
+		g.p("	}")
+		g.p()
+	}
+	if prop.sharedValidations.Pattern != "" {
+		g.p("if err := validate.Pattern(\"", prop.Name, "\", \"body\", ", prop.resolvedType.GoType, "(m.", g.caps(prop.Name), "), `", prop.sharedValidations.Pattern, "`); err != nil {")
+		g.p("	return err")
+		g.p("	}")
+		g.p()
+	}
+	if prop.sharedValidations.MultipleOf != nil {
+		g.p("if err := validate.MultipleOf(\"", prop.Name, "\", \"body\", ", "float64(m.", g.caps(prop.Name), "), ", prop.sharedValidations.MultipleOf, "); err != nil {")
+		g.p("	return err")
+		g.p("	}")
+		g.p()
+	}
+	if prop.sharedValidations.Minimum != nil {
+		g.p("if err := validate.Minimum(\"", prop.Name, "\", \"body\", ", "float64(m.", g.caps(prop.Name), "), ", prop.sharedValidations.Minimum, ", false); err != nil {")
+		g.p("	return err")
+		g.p("	}")
+		g.p()
+	}
+	if prop.sharedValidations.Maximum != nil {
+		g.p("if err := validate.Maximum(\"", prop.Name, "\", \"body\", ", "float64(m.", g.caps(prop.Name), "), ", prop.sharedValidations.Maximum, ", false); err != nil {")
+		g.p("	return err")
+		g.p("	}")
+		g.p()
+	}
+	g.p("	return nil")
+	g.p("}")
+	g.p()
 }
