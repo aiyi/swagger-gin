@@ -59,7 +59,7 @@ func MustCreateRef(ref string) Ref {
 
 // Ref represents a json reference object
 type Ref struct {
-	referenceURL     *url.URL
+	ReferenceURL     *url.URL
 	referencePointer jsonpointer.Pointer
 
 	HasFullURL      bool
@@ -71,7 +71,7 @@ type Ref struct {
 
 // GetURL gets the URL for this reference
 func (r *Ref) GetURL() *url.URL {
-	return r.referenceURL
+	return r.ReferenceURL
 }
 
 // GetPointer gets the json pointer for this reference
@@ -82,8 +82,8 @@ func (r *Ref) GetPointer() *jsonpointer.Pointer {
 // String returns the best version of the url for this reference
 func (r *Ref) String() string {
 
-	if r.referenceURL != nil {
-		return r.referenceURL.String()
+	if r.ReferenceURL != nil {
+		return r.ReferenceURL.String()
 	}
 
 	if r.HasFragmentOnly {
@@ -95,10 +95,10 @@ func (r *Ref) String() string {
 
 // IsRoot returns true if this reference is a root document
 func (r *Ref) IsRoot() bool {
-	return r.referenceURL != nil &&
+	return r.ReferenceURL != nil &&
 		!r.IsCanonical() &&
 		!r.HasURLPathOnly &&
-		r.referenceURL.Fragment == ""
+		r.ReferenceURL.Fragment == ""
 }
 
 // IsCanonical returns true when this pointer starts with http(s):// or file://
@@ -114,8 +114,8 @@ func (r *Ref) parse(jsonReferenceString string) error {
 		return err
 	}
 
-	r.referenceURL, _ = url.Parse(purell.NormalizeURL(parsed, purell.FlagsSafe|purell.FlagRemoveDuplicateSlashes))
-	refURL := r.referenceURL
+	r.ReferenceURL, _ = url.Parse(purell.NormalizeURL(parsed, purell.FlagsSafe|purell.FlagRemoveDuplicateSlashes))
+	refURL := r.ReferenceURL
 
 	if refURL.Scheme != "" && refURL.Host != "" {
 		r.HasFullURL = true

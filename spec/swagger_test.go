@@ -27,7 +27,7 @@ var spec = Swagger{
 		Paths:       &paths,
 		Definitions: map[string]Schema{"Category": Schema{schemaProps: schemaProps{Type: []string{"string"}}}},
 		Parameters: map[string]Parameter{
-			"categoryParam": Parameter{paramProps: paramProps{Name: "category", In: "query"}, simpleSchema: simpleSchema{Type: "string"}},
+			"categoryParam": Parameter{paramProps: paramProps{Name: "category", In: "query"}, SimpleSchema: SimpleSchema{Type: "string"}},
 		},
 		Responses: map[string]Response{
 			"EmptyAnswer": Response{

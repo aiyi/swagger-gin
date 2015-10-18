@@ -6,7 +6,7 @@ import (
 	"github.com/aiyi/swagger-gin/swag"
 )
 
-type simpleSchema struct {
+type SimpleSchema struct {
 	Type             string      `json:"type,omitempty"`
 	Format           string      `json:"format,omitempty"`
 	Items            *Items      `json:"items,omitempty"`
@@ -14,14 +14,14 @@ type simpleSchema struct {
 	Default          interface{} `json:"default,omitempty"`
 }
 
-func (s *simpleSchema) TypeName() string {
+func (s *SimpleSchema) TypeName() string {
 	if s.Format != "" {
 		return s.Format
 	}
 	return s.Type
 }
 
-func (s *simpleSchema) ItemsTypeName() string {
+func (s *SimpleSchema) ItemsTypeName() string {
 	if s.Items == nil {
 		return ""
 	}
@@ -50,7 +50,7 @@ type commonValidations struct {
 type Items struct {
 	refable
 	commonValidations
-	simpleSchema
+	SimpleSchema
 }
 
 // NewItems creates a new instance of items
@@ -157,13 +157,13 @@ func (i *Items) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &ref); err != nil {
 		return err
 	}
-	var simpleSchema simpleSchema
-	if err := json.Unmarshal(data, &simpleSchema); err != nil {
+	var SimpleSchema SimpleSchema
+	if err := json.Unmarshal(data, &SimpleSchema); err != nil {
 		return err
 	}
 	i.refable = ref
 	i.commonValidations = validations
-	i.simpleSchema = simpleSchema
+	i.SimpleSchema = SimpleSchema
 	return nil
 }
 
@@ -173,7 +173,7 @@ func (i Items) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b2, err := json.Marshal(i.simpleSchema)
+	b2, err := json.Marshal(i.SimpleSchema)
 	if err != nil {
 		return nil, err
 	}

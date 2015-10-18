@@ -16,7 +16,7 @@ func int64Ptr(f int64) *int64 {
 
 var header = Header{
 	headerProps: headerProps{Description: "the description of this header"},
-	simpleSchema: simpleSchema{
+	SimpleSchema: SimpleSchema{
 		Items: &Items{
 			refable: refable{Ref: MustCreateRef("Cat")},
 		},

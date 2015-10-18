@@ -15,7 +15,7 @@ type headerProps struct {
 // For more information: http://goo.gl/8us55a#headerObject
 type Header struct {
 	commonValidations
-	simpleSchema
+	SimpleSchema
 	headerProps
 }
 
@@ -40,7 +40,7 @@ func (h Header) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b2, err := json.Marshal(h.simpleSchema)
+	b2, err := json.Marshal(h.SimpleSchema)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (h *Header) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &h.commonValidations); err != nil {
 		return err
 	}
-	if err := json.Unmarshal(data, &h.simpleSchema); err != nil {
+	if err := json.Unmarshal(data, &h.SimpleSchema); err != nil {
 		return err
 	}
 	if err := json.Unmarshal(data, &h.headerProps); err != nil {

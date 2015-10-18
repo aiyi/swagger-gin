@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/aiyi/swagger-gin/httpkit"
 	"github.com/aiyi/swagger-gin/spec"
 	"github.com/aiyi/swagger-gin/swag"
 )
@@ -19,11 +18,23 @@ import (
 // Allows for specifying a list of tags to include only certain tags for the generation
 func GenerateServerOperation(operationNames, tags []string, includeHandler, includeParameters bool, opts GenOpts) error {
 	// Load the spec
-	specPath, specDoc, err := loadSpec(opts.Spec)
+	_, specDoc, err := loadSpec(opts.Spec)
 	if err != nil {
 		return err
 	}
 
+	buf := bytes.NewBuffer(nil)
+	codeGen.generateHandlers(buf, specDoc)
+	log.Println("generated gin restful APIs")
+	writeToFile(opts.Target, "restapi", buf.Bytes())
+	
+	buf.Reset()
+	codeGen.generateOperations(buf, specDoc)
+	log.Println("generated operation examples")
+	fp := filepath.Join(opts.Target, "operations")
+	return writeToFile(fp, "operations", buf.Bytes())
+	
+/*
 	if len(operationNames) == 0 {
 		operationNames = specDoc.OperationIDs()
 	}
@@ -54,7 +65,7 @@ func GenerateServerOperation(operationNames, tags []string, includeHandler, incl
 			return err
 		}
 	}
-	return nil
+*/
 }
 
 type operationGenerator struct {
@@ -161,7 +172,7 @@ func (o *operationGenerator) Generate() error {
 func (o *operationGenerator) generateHandler() error {
 	buf := bytes.NewBuffer(nil)
 
-	codeGen.generateHandler(buf, o.data.(*GenOperation))
+	//codeGen.generateHandler(buf, o.data.(*GenOperation))
 	log.Println("rendered handler template:", o.pkg+"."+o.cname)
 
 	fp := filepath.Join(o.ServerPackage, o.Target)
@@ -174,7 +185,7 @@ func (o *operationGenerator) generateHandler() error {
 func (o *operationGenerator) generateParameterModel() error {
 	buf := bytes.NewBuffer(nil)
 
-	codeGen.generateParameterModel(buf, o.data.(*GenOperation))
+	//codeGen.generateParameterModel(buf, o.data.(*GenOperation))
 	log.Println("rendered parameters template:", o.pkg+"."+o.cname+"Parameters")
 
 	fp := filepath.Join(o.ServerPackage, o.Target)
@@ -231,7 +242,7 @@ func (b *codeGenOpBuilder) MakeOperation() (GenOperation, error) {
 	if operation.Responses != nil {
 		for k, v := range operation.Responses.StatusCodeResponses {
 			isSuccess := k/100 == 2
-			gr, err := b.MakeResponse(receiver, swag.ToJSONName(b.Name+" "+httpkit.Statuses[k]), isSuccess, &resolver, v)
+			gr, err := b.MakeResponse(receiver, swag.ToJSONName(b.Name+" "+ Statuses[k]), isSuccess, &resolver, v)
 			if err != nil {
 				return GenOperation{}, err
 			}

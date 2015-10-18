@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/aiyi/swagger-gin/spec"
 	"github.com/asaskevich/govalidator"
 )
 
@@ -62,7 +63,15 @@ func (g *Generator) generateModel(buf *bytes.Buffer, def *GenDefinition) {
 
 	g.p("package ", def.Package)
 	g.p()
-	g.generateImported(def)
+	g.p("import (")
+	g.p("	\"encoding/json\"")
+	g.p("	\"fmt\"")
+	g.p("	\"time\"")
+	g.p("	\"github.com/asaskevich/govalidator\"")
+	g.p("	\"github.com/aiyi/swagger-gin/validate\"")
+	g.p(")")
+	g.p()
+
 	g.generateStruct(def)
 
 	for _, prop := range def.Properties {
@@ -82,10 +91,244 @@ func (g *Generator) generateModel(buf *bytes.Buffer, def *GenDefinition) {
 	}
 }
 
-func (g *Generator) generateHandler(buf *bytes.Buffer, op *GenOperation) {
+func (g *Generator) generateHandlers(buf *bytes.Buffer, specDoc *spec.Document) {
+	g.Buffer = buf
+	paths := specDoc.AllPaths()
+	groups := make(map[string]string)
+
+	g.p("package ", specDoc.Spec().Info.Title)
+	g.p()
+	g.p()
+	g.p("import (")
+	g.p("	\"github.com/gin-gonic/gin\"")
+	g.p(")")
+	g.p()
+
+	for _, path := range paths {
+		operations := path.PathItemProps
+		if post := operations.Post; post != nil {
+			tag := post.OperationProps.Tags[0]
+			groups[tag] = g.caps(tag)
+		}
+		if get := operations.Get; get != nil {
+			tag := get.OperationProps.Tags[0]
+			groups[tag] = g.caps(tag)
+		}
+		if put := operations.Put; put != nil {
+			tag := put.OperationProps.Tags[0]
+			groups[tag] = g.caps(tag)
+		}
+		if del := operations.Delete; del != nil {
+			tag := del.OperationProps.Tags[0]
+			groups[tag] = g.caps(tag)
+		}
+	}
+
+	g.p("var (")
+	for _, group := range groups {
+		g.p(group, " *gin.RouterGroup")
+	}
+	g.p(")")
+	g.p()
+	g.p("func AddRoutes() {")
+
+	for group, _ := range groups {
+		for pname, path := range paths {
+			operations := path.PathItemProps
+			if post := operations.Post; post != nil {
+				g.generateRouter("POST", group, pname, post)
+			}
+			if get := operations.Get; get != nil {
+				g.generateRouter("GET", group, pname, get)
+			}
+			if put := operations.Put; put != nil {
+				g.generateRouter("PUT", group, pname, put)
+			}
+			if del := operations.Delete; del != nil {
+				g.generateRouter("DELETE", group, pname, del)
+			}
+		}
+		g.p()
+	}
+
+	g.p("}")
+	g.p()
+
+	for group, _ := range groups {
+		for _, path := range paths {
+			operations := path.PathItemProps
+			if post := operations.Post; post != nil {
+				g.generateHandler(group, post)
+			}
+			if get := operations.Get; get != nil {
+				g.generateHandler(group, get)
+			}
+			if put := operations.Put; put != nil {
+				g.generateHandler(group, put)
+			}
+			if del := operations.Delete; del != nil {
+				g.generateHandler(group, del)
+			}
+		}
+	}
 }
 
-func (g *Generator) generateParameterModel(buf *bytes.Buffer, op *GenOperation) {
+func (g *Generator) generateRouter(method, group, path string, op *spec.Operation) {
+	routeGroup := op.OperationProps.Tags[0]
+	if routeGroup != group {
+		return
+	}
+
+	routePath := strings.TrimPrefix(path, "/"+routeGroup)
+	routePath = strings.Replace(routePath, "{", ":", -1)
+	routePath = strings.Replace(routePath, "}", "", -1)
+	g.p(g.caps(routeGroup), ".", method, "(\"", routePath, "\", ", g.caps(op.OperationProps.ID), "Handler)")
+}
+
+func (g *Generator) generateHandler(group string, op *spec.Operation) {
+	if op.OperationProps.Tags[0] != group {
+		return
+	}
+
+	var hasBodyParam, hasQueryParam bool
+	opParams := ""
+	parameters := op.OperationProps.Parameters
+	g.p("func ", g.caps(op.OperationProps.ID), "Handler(c *gin.Context) {")
+
+	for _, param := range parameters {
+		pp := param.ParamProps
+		if pp.In == "body" {
+			hasBodyParam = true
+		} else if pp.In == "query" {
+			hasQueryParam = true
+		}
+	}
+
+	if hasQueryParam {
+		g.p("queryValues := c.Request.URL.Query()")
+		g.p()
+	}
+
+	for _, param := range parameters {
+		pp := param.ParamProps
+		if pp.In == "body" {
+			ref := pp.Schema.SchemaProps.Ref.Ref.ReferenceURL.Fragment
+			g.p("var ", pp.Name, " models.", strings.TrimPrefix(ref, "/definitions/"))
+			g.p()
+			g.p("if err := c.BindJSON(&body); err != nil {")
+			g.p("	c.JSON(http.StatusBadRequest, err)")
+			g.p("		return")
+			g.p("	}")
+			g.p()
+			g.p("if err := body.Validate(); err != nil {")
+			g.p("	c.JSON(http.StatusBadRequest, err)")
+			g.p("	return")
+			g.p("}")
+			g.p()
+		} else if pp.In == "query" && pp.Required {
+			g.p("if ", pp.Name, " := querylValues.Get(\"", pp.Name, "\"); ", pp.Name, " == \"\" {")
+			g.p("	c.JSON(http.StatusBadRequest, gin.H{\"missing\": \"", pp.Name, "\"})")
+			g.p("	return")
+			g.p("}")
+			g.p()
+		} else if pp.In == "path" {
+			if param.SimpleSchema.Type == "string" {
+				g.p(pp.Name, " := c.Param(\"", pp.Name, "\")")
+				g.p()
+			} else {
+				g.p("if i, err := strconv.ParseInt(c.Param(\"", pp.Name, "\"), 10, ", strings.TrimPrefix(param.SimpleSchema.Format, "int"), "); err != nil {")
+				g.p("	c.JSON(http.StatusBadRequest, gin.H{\"invalid\": \"", pp.Name, "\"})")
+				g.p("	return")
+				g.p("}")
+				g.p(pp.Name, " := ", param.SimpleSchema.Format, "(i)")
+				g.p()
+			}
+			opParams += pp.Name + ", "
+		}
+	}
+
+	if hasQueryParam {
+		opParams += "queryValues, "
+	}
+	if hasBodyParam {
+		opParams += "&body"
+	}
+
+	g.p("if resp, err := operations.", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), "); err == nil {")
+	g.p("	c.JSON(http.StatusOK, resp)")
+	g.p("} else {")
+	g.p("	c.JSON(http.StatusOK, err)")
+	g.p("}")
+	g.p("}")
+	g.p()
+}
+
+func (g *Generator) generateOperations(buf *bytes.Buffer, specDoc *spec.Document) {
+	g.Buffer = buf
+	paths := specDoc.AllPaths()
+
+	g.p("package operations")
+	g.p()
+
+	for _, path := range paths {
+		operations := path.PathItemProps
+		if post := operations.Post; post != nil {
+			g.generateOperation(post)
+		}
+		if get := operations.Get; get != nil {
+			g.generateOperation(get)
+		}
+		if put := operations.Put; put != nil {
+			g.generateOperation(put)
+		}
+		if del := operations.Delete; del != nil {
+			g.generateOperation(del)
+		}
+	}
+}
+
+func (g *Generator) generateOperation(op *spec.Operation) {
+	var hasBodyParam, hasQueryParam bool
+	var model string
+	opParams := ""
+	parameters := op.OperationProps.Parameters
+
+	for _, param := range parameters {
+		pp := param.ParamProps
+		if pp.In == "body" {
+			hasBodyParam = true
+		} else if pp.In == "query" {
+			hasQueryParam = true
+		}
+	}
+
+	for _, param := range parameters {
+		pp := param.ParamProps
+		if pp.In == "body" {
+			ref := pp.Schema.SchemaProps.Ref.Ref.ReferenceURL.Fragment
+			model = strings.TrimPrefix(ref, "/definitions/")
+
+		} else if pp.In == "path" {
+			if param.SimpleSchema.Type == "string" {
+				opParams += pp.Name + " string, "
+			} else {
+				opParams += pp.Name + " "+ param.SimpleSchema.Format + ", "
+			}
+			
+		}
+	}
+
+	if hasQueryParam {
+		opParams += "queryValues url.Values, "
+	}
+	if hasBodyParam {
+		opParams += g.lowerFirst(model) + " models." + model
+	}
+
+	g.p("func ", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), ") (error) {")
+	g.p()
+	g.p("}")
+	g.p()
 }
 
 // P prints the arguments to the generated output.  It handles strings and int32s, plus
@@ -118,25 +361,14 @@ func (g *Generator) p(str ...interface{}) {
 	g.WriteByte('\n')
 }
 
-func (g *Generator) generateImported(def *GenDefinition) {
-	g.p("import (")
-	g.p("	\"encoding/json\"")
-	g.p("	\"fmt\"")
-	g.p("	\"time\"")
-	g.p("	\"github.com/asaskevich/govalidator\"")
-	g.p("	\"github.com/aiyi/httpkit/validate\"")
-	g.p(")")
-	g.p()
-}
-
 func (g *Generator) generateStruct(def *GenDefinition) {
 	g.p("type ", def.GenSchema.Name, " struct {")
 	for _, prop := range def.Properties {
 		if g.hasExtendFormat(&prop) {
 			prop.resolvedType.GoType = "string"
 		} else if prop.resolvedType.SwaggerFormat == "date" {
-				prop.resolvedType.GoType = "time.Time"
-		} 
+			prop.resolvedType.GoType = "time.Time"
+		}
 		if prop.sharedValidations.Required {
 			g.p(g.caps(prop.Name), " ", prop.resolvedType.GoType, " `json:\"", prop.Name, "\" binding:\"required\"`")
 		} else {
@@ -231,7 +463,7 @@ func (g *Generator) generatePropValidator(model string, prop *GenSchema) {
 		g.p()
 	}
 	if prop.sharedValidations.Enum != nil {
-		g.p("if err := validate", propName, "Enum(\"", prop.Name, "\", \"body\", ", "m.", propName, "); err != nil {")
+		g.p("if err := m.validate", propName, "Enum(\"", prop.Name, "\", \"body\", ", "m.", propName, "); err != nil {")
 		g.p("	return err")
 		g.p("}")
 		g.p()
@@ -240,7 +472,7 @@ func (g *Generator) generatePropValidator(model string, prop *GenSchema) {
 		validatefunc, _ := govalidator.TagMap[prop.resolvedType.SwaggerFormat]
 		funcName := runtime.FuncForPC(reflect.ValueOf(validatefunc).Pointer()).Name()
 		g.p("if ", funcName[22:], "(m.", propName, ") != true {")
-		g.p("	return fmt.Errorf(\"invalid format of ", propName, "\")")
+		g.p("	return fmt.Errorf(\"invalid format of %s\", m.", propName, ")")
 		g.p("}")
 		g.p()
 	}

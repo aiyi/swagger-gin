@@ -93,7 +93,7 @@ func (m *definitionGenerator) generateModel() error {
 	buf := bytes.NewBuffer(nil)
 
 	codeGen.generateModel(buf, m.Data.(*GenDefinition))
-	log.Println("rendered model template:", m.Name)
+	//log.Println("rendered model template:", m.Name)
 
 	return writeToFile(m.Target, m.Name, buf.Bytes())
 }

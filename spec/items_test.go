@@ -23,7 +23,7 @@ var items = Items{
 		MultipleOf:       float64Ptr(5),
 		Enum:             []interface{}{"hello", "world"},
 	},
-	simpleSchema: simpleSchema{
+	SimpleSchema: SimpleSchema{
 		Type:   "string",
 		Format: "date",
 		Items: &Items{

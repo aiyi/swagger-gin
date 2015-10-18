@@ -26,7 +26,7 @@ var parameter = Parameter{
 		MultipleOf:       float64Ptr(5),
 		Enum:             []interface{}{"hello", "world"},
 	},
-	simpleSchema: simpleSchema{
+	SimpleSchema: SimpleSchema{
 		Type:             "string",
 		Format:           "date",
 		CollectionFormat: "csv",
@@ -124,7 +124,7 @@ func TestParameterSerialization(t *testing.T) {
 
 	Convey("Parameters should serialize", t, func() {
 		items := &Items{
-			simpleSchema: simpleSchema{Type: "string"},
+			SimpleSchema: SimpleSchema{Type: "string"},
 		}
 		Convey("a query parameter", func() {
 			param := QueryParam("")
@@ -151,7 +151,7 @@ func TestParameterSerialization(t *testing.T) {
 
 		Convey("a path parameter with an int array", func() {
 			items = &Items{
-				simpleSchema: simpleSchema{Type: "int", Format: "int32"},
+				SimpleSchema: SimpleSchema{Type: "int", Format: "int32"},
 			}
 			param := PathParam("").CollectionOf(items, "multi")
 			So(param, ShouldSerializeJSON, `{"type":"array","items":{"type":"int","format":"int32"},"collectionFormat":"multi","in":"path","required":true}`)

@@ -1,4 +1,4 @@
-package httpkit
+package generator
 
 // Statuses lists the most common HTTP status codes to default message
 // taken from http://status.es
