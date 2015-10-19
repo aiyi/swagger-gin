@@ -509,6 +509,20 @@ func (g *Generator) generatePropValidator(model string, prop *GenSchema) {
 	}
 
 	g.p("func (m *", model, ") validate", propName, "() error {")
+
+	if prop.sharedValidations.Required == false {
+		if prop.resolvedType.GoType == "string" {
+			g.p("if m.", propName, " == \"\" {")
+			g.p("	return nil")
+			g.p("}")
+			g.p()
+		} else if strings.HasPrefix(prop.resolvedType.GoType, "int") {
+			g.p("if m.", propName, " == 0 {")
+			g.p("	return nil")
+			g.p("}")
+			g.p()
+		}
+	}
 	if prop.sharedValidations.MaxLength != nil {
 		g.p("if err := validate.MaxLength(\"", prop.Name, "\", \"body\", ", prop.resolvedType.GoType, "(m.", propName, "), ", prop.sharedValidations.MaxLength, "); err != nil {")
 		g.p("	return err")
@@ -560,10 +574,16 @@ func (g *Generator) generatePropValidator(model string, prop *GenSchema) {
 		g.p()
 	}
 	if g.hasExtendFormat(prop) {
+		if prop.sharedValidations.Required == false {
+			g.p("if m.", propName, " == \"\" {")
+			g.p("	return nil")
+			g.p("}")
+			g.p()
+		}
 		validatefunc, _ := govalidator.TagMap[prop.resolvedType.SwaggerFormat]
 		funcName := runtime.FuncForPC(reflect.ValueOf(validatefunc).Pointer()).Name()
 		g.p("if ", funcName[22:], "(m.", propName, ") != true {")
-		g.p("	return fmt.Errorf(\"invalid format of %s\", m.", propName, ")")
+		g.p("	return errors.InvalidType(\"", prop.Name, "\",\"body\", \"", prop.resolvedType.SwaggerFormat, "\", m.", propName, ")")
 		g.p("}")
 		g.p()
 	}

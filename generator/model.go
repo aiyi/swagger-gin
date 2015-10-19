@@ -15,17 +15,17 @@ import (
 )
 
 // GenerateDefinition generates a model file for a schema defintion.
-func GenerateDefinition(modelNames []string, includeModel, includeValidator bool, opts GenOpts) error {
+func GenerateDefinition(includeModel, includeValidator bool, opts GenOpts) error {
+	var modelNames []string
+
 	// Load the spec
 	specPath, specDoc, err := loadSpec(opts.Spec)
 	if err != nil {
 		return err
 	}
 
-	if len(modelNames) == 0 {
-		for k := range specDoc.Spec().Definitions {
-			modelNames = append(modelNames, k)
-		}
+	for k := range specDoc.Spec().Definitions {
+		modelNames = append(modelNames, k)
 	}
 
 	for _, modelName := range modelNames {
