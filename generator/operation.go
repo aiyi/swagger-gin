@@ -24,15 +24,15 @@ func GenerateServerOperation(operationNames, tags []string, includeHandler, incl
 	}
 
 	buf := bytes.NewBuffer(nil)
-	codeGen.generateHandlers(buf, specDoc)
-	log.Println("generated gin restful APIs")
-	writeToFile(opts.Target, "restapi", buf.Bytes())
-	
-	buf.Reset()
 	codeGen.generateOperations(buf, specDoc)
 	log.Println("generated operation examples")
 	fp := filepath.Join(opts.Target, "operations")
-	return writeToFile(fp, "operations", buf.Bytes())
+	writeToFile(fp, "operations", buf.Bytes())
+	
+	buf.Reset()
+	codeGen.generateHandlers(buf, specDoc)
+	log.Println("generated gin restful APIs")
+	return writeToFile(opts.Target, "restapi", buf.Bytes())
 	
 /*
 	if len(operationNames) == 0 {

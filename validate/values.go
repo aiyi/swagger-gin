@@ -5,14 +5,13 @@ import (
 	"regexp"
 	"unicode/utf8"
 
-	"github.com/go-swagger/go-swagger/errors"
-	"github.com/go-swagger/go-swagger/strfmt"
-	"github.com/go-swagger/go-swagger/swag"
+	"github.com/aiyi/swagger-gin/errors"
+	"github.com/aiyi/swagger-gin/swag"
 )
 
 // Enum validates if the data is a member of the enum
 func Enum(path, in string, data interface{}, enum interface{}) *errors.Validation {
-	val := reflect.ValueOf(data)
+	val := reflect.ValueOf(enum)
 	if val.Kind() != reflect.Slice {
 		return nil
 	}
@@ -137,20 +136,5 @@ func MultipleOf(path, in string, data, factor float64) *errors.Validation {
 	if !swag.IsFloat64AJSONInteger(data / factor) {
 		return errors.NotMultipleOf(path, in, factor)
 	}
-	return nil
-}
-
-// FormatOf validates if a string matches a format in the format registry
-func FormatOf(path, in, format, data string, registry strfmt.Registry) *errors.Validation {
-	if registry == nil {
-		registry = strfmt.Default
-	}
-	if ok := registry.ContainsName(format); !ok {
-		return errors.InvalidTypeName(format)
-	}
-	if ok := registry.Validates(format, data); !ok {
-		return errors.InvalidType(path, in, format, data)
-	}
-
 	return nil
 }

@@ -80,9 +80,7 @@ func (g *Generator) generateModel(buf *bytes.Buffer, def *GenDefinition) {
 		}
 	}
 
-	if def.GenSchema.sharedValidations.HasValidations {
-		g.generateValidator(def)
-	}
+	g.generateValidator(def)
 
 	for _, prop := range def.Properties {
 		if prop.sharedValidations.HasValidations || g.hasExtendFormat(&prop) {
@@ -191,9 +189,19 @@ func (g *Generator) generateHandler(group string, op *spec.Operation) {
 	}
 
 	var hasBodyParam, hasQueryParam bool
-	opParams := ""
 	parameters := op.OperationProps.Parameters
-	g.p("func ", g.caps(op.OperationProps.ID), "Handler(c *gin.Context) {")
+	responses := op.Responses.ResponsesProps.StatusCodeResponses
+	opParams := ""
+	modelResp := ""
+
+	for status, resp := range responses {
+		if status == 200 {
+			if refUrl := resp.Schema.SchemaProps.Ref.Ref.ReferenceURL; refUrl != nil {
+				modelResp = strings.TrimPrefix(refUrl.Fragment, "/definitions/")
+				break
+			}
+		}
+	}
 
 	for _, param := range parameters {
 		pp := param.ParamProps
@@ -203,6 +211,8 @@ func (g *Generator) generateHandler(group string, op *spec.Operation) {
 			hasQueryParam = true
 		}
 	}
+
+	g.p("func ", g.caps(op.OperationProps.ID), "Handler(c *gin.Context) {")
 
 	if hasQueryParam {
 		g.p("queryValues := c.Request.URL.Query()")
@@ -216,7 +226,6 @@ func (g *Generator) generateHandler(group string, op *spec.Operation) {
 			g.p("var ", pp.Name, " models.", strings.TrimPrefix(ref, "/definitions/"))
 			g.p()
 			g.p("if err := c.BindJSON(&body); err != nil {")
-			g.p("	c.JSON(http.StatusBadRequest, err)")
 			g.p("		return")
 			g.p("	}")
 			g.p()
@@ -225,40 +234,93 @@ func (g *Generator) generateHandler(group string, op *spec.Operation) {
 			g.p("	return")
 			g.p("}")
 			g.p()
-		} else if pp.In == "query" && pp.Required {
-			g.p("if ", pp.Name, " := querylValues.Get(\"", pp.Name, "\"); ", pp.Name, " == \"\" {")
-			g.p("	c.JSON(http.StatusBadRequest, gin.H{\"missing\": \"", pp.Name, "\"})")
-			g.p("	return")
-			g.p("}")
-			g.p()
+
+		} else if pp.In == "query" {
+			if param.SimpleSchema.Type == "string" {
+				g.p(pp.Name, " := queryValues.Get(\"", pp.Name, "\")")
+				if pp.Required {
+					g.p("if ", pp.Name, " == \"\" {")
+					g.p("	c.JSON(http.StatusBadRequest, gin.H{\"missing\": \"", pp.Name, "\"})")
+					g.p("	return")
+					g.p("}")
+				}
+				g.p()
+			} else {
+				strName := "str" + g.caps(pp.Name)
+				g.p(strName, " := queryValues.Get(\"", pp.Name, "\")")
+				if pp.Required {
+					g.p("if ", strName, " == \"\" {")
+					g.p("	c.JSON(http.StatusBadRequest, gin.H{\"missing\": \"", pp.Name, "\"})")
+					g.p("	return")
+					g.p("}")
+				}
+				g.p()
+				g.generateParamInt(strName, pp.Name, param.SimpleSchema.Format)
+			}
+			opParams += pp.Name + ", "
+
+		} else if pp.In == "formData" {
+			if param.SimpleSchema.Type == "string" {
+				g.p(pp.Name, " := c.Request.PostFormValue(\"", pp.Name, "\")")
+				if pp.Required {
+					g.p("if ", pp.Name, " == \"\" {")
+					g.p("	c.JSON(http.StatusBadRequest, gin.H{\"missing\": \"", pp.Name, "\"})")
+					g.p("	return")
+					g.p("}")
+				}
+				g.p()
+			} else {
+				strName := "str" + g.caps(pp.Name)
+				g.p(strName, " := c.Request.PostFormValue(\"", pp.Name, "\")")
+				if pp.Required {
+					g.p("if ", strName, " == \"\" {")
+					g.p("	c.JSON(http.StatusBadRequest, gin.H{\"missing\": \"", pp.Name, "\"})")
+					g.p("	return")
+					g.p("}")
+				}
+				g.p()
+				g.generateParamInt(strName, pp.Name, param.SimpleSchema.Format)
+			}
+			opParams += pp.Name + ", "
+
 		} else if pp.In == "path" {
 			if param.SimpleSchema.Type == "string" {
 				g.p(pp.Name, " := c.Param(\"", pp.Name, "\")")
 				g.p()
 			} else {
-				g.p("if i, err := strconv.ParseInt(c.Param(\"", pp.Name, "\"), 10, ", strings.TrimPrefix(param.SimpleSchema.Format, "int"), "); err != nil {")
-				g.p("	c.JSON(http.StatusBadRequest, gin.H{\"invalid\": \"", pp.Name, "\"})")
-				g.p("	return")
-				g.p("}")
-				g.p(pp.Name, " := ", param.SimpleSchema.Format, "(i)")
-				g.p()
+				strName := "str" + g.caps(pp.Name)
+				g.p(strName, " := c.Param(\"", pp.Name, "\")")
+				g.generateParamInt(strName, pp.Name, param.SimpleSchema.Format)
 			}
 			opParams += pp.Name + ", "
 		}
 	}
 
-	if hasQueryParam {
-		opParams += "queryValues, "
-	}
 	if hasBodyParam {
 		opParams += "&body"
 	}
 
-	g.p("if resp, err := operations.", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), "); err == nil {")
-	g.p("	c.JSON(http.StatusOK, resp)")
+	if modelResp != "" {
+		g.p("if resp, err := operations.", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), "); err == nil {")
+		g.p("	c.JSON(http.StatusOK, resp)")
+	} else {
+		g.p("if err := operations.", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), "); err == nil {")
+		g.p("	c.String(http.StatusOK, \"Success\")")
+	}
 	g.p("} else {")
-	g.p("	c.JSON(http.StatusOK, err)")
+	g.p("	c.JSON(http.StatusBadRequest, err)")
 	g.p("}")
+	g.p("}")
+	g.p()
+}
+
+func (g *Generator) generateParamInt(strName, name, format string) {
+	g.p("var ", name, " ", format)
+	g.p("if i, err := strconv.ParseInt(", strName, ", 10, ", strings.TrimPrefix(format, "int"), "); err != nil {")
+	g.p("	c.JSON(http.StatusBadRequest, gin.H{\"invalid\": \"", name, "\"})")
+	g.p("	return")
+	g.p("} else {")
+	g.p(name, " = ", format, "(i)")
 	g.p("}")
 	g.p()
 }
@@ -288,17 +350,26 @@ func (g *Generator) generateOperations(buf *bytes.Buffer, specDoc *spec.Document
 }
 
 func (g *Generator) generateOperation(op *spec.Operation) {
-	var hasBodyParam, hasQueryParam bool
-	var model string
-	opParams := ""
+	var hasBodyParam bool
 	parameters := op.OperationProps.Parameters
+	responses := op.Responses.ResponsesProps.StatusCodeResponses
+	model := ""
+	modelResp := ""
+	opParams := ""
+
+	for status, resp := range responses {
+		if status == 200 {
+			if refUrl := resp.Schema.SchemaProps.Ref.Ref.ReferenceURL; refUrl != nil {
+				modelResp = strings.TrimPrefix(refUrl.Fragment, "/definitions/")
+				break
+			}
+		}
+	}
 
 	for _, param := range parameters {
 		pp := param.ParamProps
 		if pp.In == "body" {
 			hasBodyParam = true
-		} else if pp.In == "query" {
-			hasQueryParam = true
 		}
 	}
 
@@ -308,25 +379,41 @@ func (g *Generator) generateOperation(op *spec.Operation) {
 			ref := pp.Schema.SchemaProps.Ref.Ref.ReferenceURL.Fragment
 			model = strings.TrimPrefix(ref, "/definitions/")
 
+		} else if pp.In == "query" {
+			if param.SimpleSchema.Type == "string" {
+				opParams += pp.Name + " string, "
+			} else {
+				opParams += pp.Name + " " + param.SimpleSchema.Format + ", "
+			}
+
+		} else if pp.In == "formData" {
+			if param.SimpleSchema.Type == "string" {
+				opParams += pp.Name + " string, "
+			} else {
+				opParams += pp.Name + " " + param.SimpleSchema.Format + ", "
+			}
+
 		} else if pp.In == "path" {
 			if param.SimpleSchema.Type == "string" {
 				opParams += pp.Name + " string, "
 			} else {
-				opParams += pp.Name + " "+ param.SimpleSchema.Format + ", "
+				opParams += pp.Name + " " + param.SimpleSchema.Format + ", "
 			}
-			
+
 		}
 	}
 
-	if hasQueryParam {
-		opParams += "queryValues url.Values, "
-	}
 	if hasBodyParam {
-		opParams += g.lowerFirst(model) + " models." + model
+		opParams += g.lowerFirst(model) + " *models." + model
 	}
 
-	g.p("func ", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), ") (error) {")
-	g.p()
+	if modelResp != "" {
+		g.p("func ", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), ") (* models.", modelResp, ", error) {")
+		g.p("	return &models.", modelResp, "{}, nil")
+	} else {
+		g.p("func ", g.caps(op.OperationProps.ID), "(", strings.TrimSuffix(opParams, ", "), ") (error) {")
+		g.p("	return nil")
+	}
 	g.p("}")
 	g.p()
 }
@@ -366,7 +453,7 @@ func (g *Generator) generateStruct(def *GenDefinition) {
 	for _, prop := range def.Properties {
 		if g.hasExtendFormat(&prop) {
 			prop.resolvedType.GoType = "string"
-		} else if prop.resolvedType.SwaggerFormat == "date" {
+		} else if prop.resolvedType.SwaggerFormat == "date-time" {
 			prop.resolvedType.GoType = "time.Time"
 		}
 		if prop.sharedValidations.Required {
@@ -412,7 +499,11 @@ func (g *Generator) generatePropValidator(model string, prop *GenSchema) {
 		g.p("			", varEnum, " = append(", varEnum, ", v)")
 		g.p("		}")
 		g.p("	}")
-		g.p("	return validate.Enum(path, location, value, ", varEnum, ")")
+		g.p("	if err:= validate.Enum(path, location, value, ", varEnum, "); err != nil {")
+		g.p("		return err")
+		g.p("	}")
+		g.p()
+		g.p("	return nil")
 		g.p("}")
 		g.p()
 	}
