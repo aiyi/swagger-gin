@@ -1,4 +1,5 @@
-# swagger-gin
+
+## [DEPRECATED]
 Generate REST API boilerplate code from Swagger 2.0 API spec for [gin] web framework. Thanks to the [go-swagger] project, it's awesome and has been heavily used as code base of swagger-gin. 
 
 ## Usage
